@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     dashboard_username: str = ""
     dashboard_password: str = ""
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

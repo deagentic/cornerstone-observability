@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import Float, func, literal_column, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -109,7 +109,7 @@ async def summary(  # pylint: disable=too-many-locals
                 func.count().label("count"),
             ).where(Event.event_type == "skill.invoked")
         )
-        .group_by(Event.payload["skill_name"].astext)
+        .group_by(literal_column("skill_name"))
         .order_by(func.count().desc())
         .limit(10)
     )
@@ -125,11 +125,11 @@ async def summary(  # pylint: disable=too-many-locals
                 Event.payload["model"].astext.label("model"),
                 func.count().label("count"),
                 func.coalesce(
-                    func.sum(Event.payload["estimated_cost_usd"].cast("float")), 0.0
+                    func.sum(Event.payload["estimated_cost_usd"].astext.cast(Float)), 0.0
                 ).label("total_cost_usd"),
             ).where(Event.event_type == "skill.invoked")
         )
-        .group_by(Event.payload["model"].astext)
+        .group_by(literal_column("model"))
         .order_by(func.count().desc())
         .limit(10)
     )
