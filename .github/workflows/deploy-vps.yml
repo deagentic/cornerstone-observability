@@ -1,0 +1,58 @@
+name: Deploy to VPS staging
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VPS_DEPLOY_KEY_B64: ${{ secrets.VPS_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_DEPLOY_KEY_B64" | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H vps.kronosb.com >> ~/.ssh/known_hosts
+
+      - name: Sync source to VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key root@vps.kronosb.com \
+            "mkdir -p /docker/cornerstone-observability"
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ \
+            root@vps.kronosb.com:/docker/cornerstone-observability/
+
+      - name: Write secrets on VPS
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.TELEMETRY_POSTGRES_PASSWORD }}
+        run: |
+          ssh -i ~/.ssh/deploy_key root@vps.kronosb.com \
+            "cat > /docker/cornerstone-observability/deploy/vps/.env << 'EOF'
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_USER=telemetry
+          POSTGRES_DB=agentic_telemetry
+          EOF"
+
+      - name: Deploy containers
+        run: |
+          ssh -i ~/.ssh/deploy_key root@vps.kronosb.com \
+            "cd /docker/cornerstone-observability/deploy/vps && \
+             docker compose --env-file .env up --build -d"
+
+      - name: Verify health
+        run: |
+          sleep 10
+          ssh -i ~/.ssh/deploy_key root@vps.kronosb.com \
+            "docker compose -f /docker/cornerstone-observability/deploy/vps/docker-compose.yml ps"
